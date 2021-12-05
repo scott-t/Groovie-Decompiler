@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,6 +25,9 @@ namespace groovieCompiler
         bool t7g;
 
         int[] opCount = new int[0x60];
+
+        string x16(int i)
+        {  return "0x" + Convert.ToString(i, 16); }
 
         private UInt32 ReadFileRef()
         {
@@ -119,7 +122,7 @@ namespace groovieCompiler
                     System.Console.WriteLine("Jumped out of script?!?  0x" + Convert.ToString(called, 16));
                     lineNum = lines.Length - 1;
                 }
-                lines[lineNum] = "\nloc_" + called + "\n" + lines[lineNum];
+                lines[lineNum] = "\nloc_" + called + "\t\t; 0x" + Convert.ToString(called,16) + "\n" + lines[lineNum];
             }
 
             genASM = "";
@@ -421,7 +424,7 @@ namespace groovieCompiler
                         byte val = grvReader.ReadByte();
                         ushort offset = grvReader.ReadUInt16();
                         scriptJumps.Add(offset);
-                        genASM += ("\tHOTKEY\tloc_" + offset + ", " + val);
+                        genASM += ("\tHOTKEY\tloc_" + offset + ", " + val + "  ; " + ((char)val).ToString());
                     }
                     break;
 
@@ -547,14 +550,15 @@ namespace groovieCompiler
                         else
                             offset = grvReader.ReadUInt16();
 
-                        genASM += ("\tMOVS\t0x" + Convert.ToString(offset, 16));
+                        genASM += ("\tMOVS\tvar[0x" + Convert.ToString(offset, 16)) + "...] = ";
 
+                        string tmp = "";
                         do
                         {
-                            genASM += ", " + readAwk1();
+                            tmp += readScriptChar(true, true, true) + ", ";
                             grvReader.BaseStream.Seek(-1, System.IO.SeekOrigin.Current);
                         } while ((grvReader.ReadByte() & 0x80) == 0);
-
+                        genASM += tmp.Substring(0, tmp.Length - 2);
                     }
                     break;
 
@@ -688,8 +692,15 @@ namespace groovieCompiler
                 case 0x21:
                     {
                         // call something
-                        Console.WriteLine("Unimplemented 0x21");
-                        return false;
+                        if (firstBit)
+                            genASM += "\tSTRCMPJNE\t" + grvReader.ReadByte();
+                        else
+                            genASM += "\tSTRCMPJNE\t" + grvReader.ReadUInt16();
+
+                        genASM += ", " + readAwk2();
+                        uint jmp = grvReader.ReadUInt16();
+                        genASM += " loc_" + jmp;
+                        scriptJumps.Add(jmp);
 
                         //    ushort offset = 0; /* = (ushort)functionCall();*/
                         //    if (offset > 0x09)
@@ -720,6 +731,7 @@ namespace groovieCompiler
                         //}
                         //throw new Exception("Unknown param awk call");
                     }
+                    break;
 
                 case 0x33:
                     // Copy string into arg1
@@ -767,21 +779,24 @@ namespace groovieCompiler
                     // "Print" string?
                     {
                         genASM += "\tPRINT\t";
-                        if (!t7g || t7g)
+                        if (!t7g)
                         {
-                           // genASM += grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", ";
-                         //  genASM += grvReader.ReadByte() + ", " + grvReader.ReadByte() + ", " + grvReader.ReadByte() + ", ";
+                            genASM += grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", ";
+                            genASM += grvReader.ReadByte() + ", " + grvReader.ReadByte() + ", " + grvReader.ReadByte() + ", ";
                         }
                         string l = "";
                         bool done = false;
                         do
                         {
                             l += readAwk1() + ", ";
-                            grvReader.BaseStream.Seek(-1, System.IO.SeekOrigin.Current);
-                            if (t7g && ((grvReader.ReadByte() & 0x80) != 0))
+
+                            if (t7g && (grvReader.BaseStream.Seek(-1, System.IO.SeekOrigin.Current) > 0 && (grvReader.ReadByte() & 0x80) != 0))
                                 done = true;
-                            else if (!t7g && (grvReader.ReadByte() != 0))
+                            else if (!t7g && (grvReader.PeekChar() == 0))
+                            {
+                                grvReader.ReadByte();
                                 done = true;
+                            }
                         } while (!done);
                         genASM += l.Substring(0, l.Length - 2);
                         break;
@@ -974,7 +989,10 @@ namespace groovieCompiler
                         //Console.WriteLine("Unimplemented 39");
                         //return false;
 
-                        genASM += "\tSWAP\t; RAW PARAMS: ";// +readAwk1() + ", " + readAwk2();
+                        genASM += "\tSWAP\t vars[10*" + readScriptChar(false, true, true) + " + " + readScriptChar(false, true, true) + " + 25]";
+                        genASM += " <=> vars[10*" + readScriptChar(false, true, true) + " + " + readScriptChar(false, true, true) + " + 25] ";
+
+                        /*
 
                         // .text:0040389B
                         ushort arg1, arg2, arg3;
@@ -1058,7 +1076,7 @@ namespace groovieCompiler
                         //arg3 += 0x19;
 
                         //// now got an arg1 (varOffset2) and arg3 (var13C)
-
+*/
                         //byte tmp;
                         //tmp = vars[arg1];
                         //vars[arg1] = vars[arg2];
@@ -1125,7 +1143,7 @@ namespace groovieCompiler
                 case 0x40:
                     // Two params for VDX player
                     {
-                        genASM += "SETCOORD\t" + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + "\t;Set video start @ arg1,arg2";
+                        genASM += "\tSETCOORD\t" + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + "\t;Set video start @ arg1,arg2";
                         //flags |= bitFlags.Bit7;
                         //ushort arg1 = stream.ReadUInt16();
                         //if (arg1 > 0x7FFF)
@@ -1233,6 +1251,11 @@ namespace groovieCompiler
                     Console.WriteLine("Unknown op56");
                     break;
 
+                case 0x5A:
+                    genASM += ("\tOp5A\t" + grvReader.ReadByte());
+                    Console.WriteLine("Unknown op5a");
+                    break;
+
                 default:
                     Console.WriteLine("Invalid opcode at location 0x" + Convert.ToString(grvReader.BaseStream.Position - 1, 16) + ": " + op);
                     return false;
@@ -1254,48 +1277,41 @@ namespace groovieCompiler
             {
                 if (data == 0x23)
                 {
-                    ret += "Arr1D";
-
-                    //grvReader.BaseStream.Seek(-1, System.IO.SeekOrigin.Current);
-                    //while (grvReader.PeekChar() == 0x23)
-                    //{
-                    //    grvReader.ReadByte();
-                        data = grvReader.ReadByte();
-                        ret += ", " + (byte)((data & 0x7f) - 0x61);
-                    //    if ((data & 0x80) == 0x80)
-                    //        break;
-                    //}
-
-                    //if ((data & 0x80) == 0)
-                    //{
-                    //    Console.WriteLine("Mass failure on 1D array reading");
-                    //}
-
-                    //byte data2 = (byte)(grvReader.ReadByte() & 0x7f);
-
+                    data = grvReader.ReadByte();
+                    ret += "var[" + x16((byte)((data & 0x7f) - 0x61)) + "], ";
                 }
                 else if (data == 0x7C)
                 {
-                    // 2D array
-                    byte data2, data3 = 0;
-                    data2 = grvReader.ReadByte();
-                    data3 = data2;
-                    if (data2 == 0x23)
+                    /*string val, val2;
+                    data = grvReader.ReadByte();
+                    if (data == 0x23)
                     {
-                        data2 -= 0x61;
-                        //data2 = vars[data2]; 
+                        data = grvReader.ReadByte();
+                        val = "var[" + (byte)(data - 0x61) + "]";
                     }
                     else
                     {
-                        //data2 = vars[data2 - 0x30];
+                        val = "" + (byte)(data - 0x30);
                     }
-                    ret = "FAIL";
+
+                    data = grvReader.ReadByte();
+                    if (data == 0x23)
+                    {
+                        data = grvReader.ReadByte();
+                        val2 = "var[" + (byte)(data - 0x61) + "]";
+                    }
+                    else
+                    {
+                        val2 = "" + (byte)(data - 0x30);
+                    }*/
+
+                    ret += "var[10*" + readScriptChar(false, false, false) + " + " + readScriptChar(false, false, false) + " + 25]+0x30, ";
                 }
                 else
                 {
                     // simple read
-                    data -= 0x30;
-                    ret += ", " + data.ToString();
+                    //data -= 0x30;
+                    ret += "'" + (char)(data) + "', ";
                 }
             }
             return ret;
@@ -1359,40 +1375,40 @@ namespace groovieCompiler
             return ret;
         }
 
-        //private string readScriptChar(bool allow7C, bool limitVal, bool limitVar)
-        //{
-        //    //byte result;
-        //    byte data = grvReader.ReadByte();
+        private string readScriptChar(bool allow7C, bool limitVal, bool limitVar)
+        {
+            //byte result;
+            byte data = grvReader.ReadByte();
 
-        //    if (limitVal)
-        //    {
-        //        data &= 0x7F;
-        //    }
+            if (limitVal)
+            {
+                data &= 0x7F;
+            }
 
-        //    if (allow7C && (data == 0x7C))
-        //    {
-        //        // Index a bidimensional array
-        //        byte parta, partb;
-        //        parta = (byte)(grvReader.ReadByte() - 0x30);
-        //        partb = readScriptChar(false, true, true);
-        //        //result = _variables[0x0A * parta + partb + 0x19];
-        //    }
-        //    else if (data == 0x23)
-        //    {
-        //        // Index an array
-        //        data = grvReader.ReadByte();
-        //        if (limitVar)
-        //        {
-        //            data &= 0x7F;
-        //        }
-        //        //result = _variables[data - 0x61];
-        //    }
-        //    else
-        //    {
-        //        // Immediate value
-        //        //result = data - 0x30;
-        //    }
-        //    return 0;
-        //}
+            if (allow7C && (data == 0x7C))
+            {
+                // Index a bidimensional array
+                string parta, partb;
+                parta = readScriptChar(false, false, false); ;
+                partb = readScriptChar(false, true, true);
+                return "vars[10*" + parta + " + " + partb + " + 25]";
+            }
+            else if (data == 0x23)
+            {
+                // Index an array
+                data = grvReader.ReadByte();
+                if (limitVar)
+                {
+                    data &= 0x7F;
+                }
+                return "vars[" + x16((byte)(data - 0x61)) + "]";
+            }
+            else
+            {
+                // Immediate value
+                return (data - 0x30).ToString();
+            }
+            return "WTF";
+        }
     }
 }
