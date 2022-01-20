@@ -1227,33 +1227,28 @@ namespace groovieCompiler
                     break;
 
                 case 0x52:
-                    // Do heap to game area.  Arg discarded?
+                    // Do heap to game area.  Arg discarded? o2_copyfgtobg
                     // .text:00403B22
-                    genASM += ("\tOp52\t" + grvReader.ReadByte());
-                    //throw new Exception("Massively change game area");
-                    Console.WriteLine("Unknown op52");
-                    //return false;
+                    genASM += ("\tCopyFgToBg\t" + grvReader.ReadByte());
                     break;
 
                 case 0x53:
-                    // Load cursor stuff
-                    genASM += ("\tOp53\t" + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16());
-                    Console.WriteLine("Unknown op53");
+                    // Load cursor stuff o_hotspot_outrect
+                    genASM += ("\toutrect\t" + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16() + ", " + grvReader.ReadUInt16());
                     break;
 
                 case 0x55:
-                    genASM += ("\tOp55\t" + grvReader.ReadUInt16());
-                    Console.WriteLine("Unknown op55");
+                    genASM += ("\tSetScriptEnd\t" + grvReader.ReadUInt16());
                     break;
 
                 case 0x56:
-                    genASM += ("\tOp56\t" + grvReader.ReadUInt32() + ", " + grvReader.ReadByte() + ", " + grvReader.ReadByte());
-                    Console.WriteLine("Unknown op56");
+                    // o2_playsound
+                    genASM += ("\tSound\t" + grvReader.ReadUInt32() + ", " + grvReader.ReadByte() + ", " + grvReader.ReadByte());
                     break;
 
                 case 0x5A:
-                    genASM += ("\tOp5A\t" + grvReader.ReadByte());
-                    Console.WriteLine("Unknown op5a");
+                    // o2_preview_loadgame
+                    genASM += ("\tPreviewLoadGame\t" + grvReader.ReadByte());
                     break;
 
                 default:
